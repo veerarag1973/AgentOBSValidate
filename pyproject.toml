@@ -1,0 +1,68 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentobs-validate"
+version = "0.1.0"
+description = "Reference validation CLI for the AgentOBS event standard"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+keywords = ["agentobs", "observability", "validation", "cli", "jsonl"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Testing",
+    "Topic :: System :: Logging",
+]
+dependencies = [
+    "click>=8.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.0",
+]
+
+[project.scripts]
+agentobs-validate = "agentobs_validate.cli.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# ── pytest ──────────────────────────────────────────────────────────────────
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+# importlib mode avoids "module-not-measured" coverage warning with src/ layout
+addopts = [
+    "--import-mode=importlib",
+    "--cov=agentobs_validate",
+    "--cov-report=term-missing",
+    "--cov-fail-under=95",
+    "-v",
+]
+
+# ── coverage ─────────────────────────────────────────────────────────────────
+[tool.coverage.run]
+# source_pkgs is required for src/ layout
+source_pkgs = ["agentobs_validate"]
+branch = true
+# Suppress "module-not-measured" which is cosmetic with src/ layout + importlib mode
+disable_warnings = ["module-not-measured"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]

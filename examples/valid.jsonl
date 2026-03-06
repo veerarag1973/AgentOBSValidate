@@ -1,0 +1,5 @@
+{"event_id":"01HZQSN7PQVR2K4M0BXJD3GSTA","timestamp":"2026-03-06T10:00:00.000Z","event_type":"agent.plan.created","source":"spanforge@1.0.0","trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","span_id":"00f067aa0ba902b7"}
+{"event_id":"01HZQSN7PQVR2K4M0BXJD3GSTB","timestamp":"2026-03-06T10:00:01.000Z","event_type":"agent.tool.called","source":"langchain@0.2.11","trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","span_id":"00f067aa0ba902b8"}
+{"event_id":"01HZQSN7PQVR2K4M0BXJD3GSTC","timestamp":"2026-03-06T10:00:02.000Z","event_type":"agent.llm.request","source":"autogen@0.4.1","trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","span_id":"00f067aa0ba902b9"}
+{"event_id":"01HZQSN7PQVR2K4M0BXJD3GSTD","timestamp":"2026-03-06T10:00:03.000Z","event_type":"agent.llm.response","source":"autogen@0.4.1","trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","span_id":"00f067aa0ba902ba","signature":{"algorithm":"HMAC-SHA256","key_id":"spanforge-key-1","value":"aGVsbG8="}}
+{"event_id":"01HZQSN7PQVR2K4M0BXJD3GSTE","timestamp":"2026-03-06T10:00:04.000Z","event_type":"agent.memory.write","source":"agent-runtime@0.9.2","trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","span_id":"00f067aa0ba902bb"}

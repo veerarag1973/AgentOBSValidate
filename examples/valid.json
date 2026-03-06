@@ -1,0 +1,26 @@
+[
+  {
+    "event_id": "01HZQSN7PQVR2K4M0BXJD3GSTF",
+    "timestamp": "2026-03-06T10:00:00.000Z",
+    "event_type": "agent.plan.created",
+    "source": "spanforge@1.0.0",
+    "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+    "span_id": "00f067aa0ba902bc"
+  },
+  {
+    "event_id": "01HZQSN7PQVR2K4M0BXJD3GSTG",
+    "timestamp": "2026-03-06T10:00:01.000Z",
+    "event_type": "agent.tool.called",
+    "source": "langchain@0.2.11",
+    "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+    "span_id": "00f067aa0ba902bd"
+  },
+  {
+    "event_id": "01HZQSN7PQVR2K4M0BXJD3GSTH",
+    "timestamp": "2026-03-06T10:00:02.000Z",
+    "event_type": "agent.llm.request",
+    "source": "autogen@0.4.1",
+    "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
+    "span_id": "00f067aa0ba902be"
+  }
+]
