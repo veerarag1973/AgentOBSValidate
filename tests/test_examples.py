@@ -146,14 +146,17 @@ class TestInvalidJsonlFixture:
         assert len(events) == 12
 
     def test_covers_all_error_codes(self, examples_dir: Path) -> None:
-        """Every error code defined in spec §8 must be triggered."""
+        """Every error code except SIGNATURE_MISMATCH (requires --key-file) must be triggered."""
+        from agentobs_validate.errors.codes import ALL_ERROR_CODES, SIGNATURE_MISMATCH
         stream_result = validate_stream(iter_events(str(examples_dir / "invalid.jsonl")))
         found_codes = {
             err.code
             for event_result in stream_result.events
             for err in event_result.errors
         }
-        assert found_codes == ALL_ERROR_CODES
+        # SIGNATURE_MISMATCH is only produced with --key-file; exclude from fixture check.
+        expected = ALL_ERROR_CODES - {SIGNATURE_MISMATCH}
+        assert found_codes == expected
 
     def test_each_event_has_distinct_primary_error(self, examples_dir: Path) -> None:
         """Every event in the invalid file contributes at least one error."""

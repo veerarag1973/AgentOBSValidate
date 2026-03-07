@@ -136,7 +136,7 @@ class TestStreamResult:
     def test_to_dict_empty(self):
         r = StreamResult(events_checked=0, valid=0, invalid=0, events=[])
         d = r.to_dict()
-        assert d == {"events_checked": 0, "valid": 0, "invalid": 0, "events": []}
+        assert d == {"schema_version": "0.1", "events_checked": 0, "valid": 0, "invalid": 0, "events": []}
 
     def test_to_dict_with_events(self):
         ev = EventResult(index=1, status="pass", errors=[])

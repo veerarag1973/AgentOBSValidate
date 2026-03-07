@@ -5,7 +5,7 @@ Spec reference: §7 Required Envelope Fields, §8 Field Specifications.
 
 from __future__ import annotations
 
-from typing import Final, FrozenSet
+from typing import Final
 
 # ── Required envelope fields (spec §7) ──────────────────────────────────────
 
@@ -27,7 +27,7 @@ FIELD_SIG_VALUE: Final[str] = "value"
 
 # ── Sets for programmatic access ─────────────────────────────────────────────
 
-REQUIRED_FIELDS: Final[FrozenSet[str]] = frozenset(
+REQUIRED_FIELDS: Final[frozenset[str]] = frozenset(
     {
         FIELD_EVENT_ID,
         FIELD_TIMESTAMP,
@@ -38,7 +38,7 @@ REQUIRED_FIELDS: Final[FrozenSet[str]] = frozenset(
     }
 )
 
-OPTIONAL_FIELDS: Final[FrozenSet[str]] = frozenset({FIELD_SIGNATURE})
+OPTIONAL_FIELDS: Final[frozenset[str]] = frozenset({FIELD_SIGNATURE})
 
 # Ordered sequence used by the validation pipeline (spec §9)
 REQUIRED_FIELDS_ORDERED: Final[tuple[str, ...]] = (

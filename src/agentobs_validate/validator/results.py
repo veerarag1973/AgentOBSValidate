@@ -61,10 +61,12 @@ class StreamResult:
     valid: int
     invalid: int
     events: list[EventResult] = field(default_factory=list)
+    schema_version: str = "0.1"
 
     def to_dict(self) -> dict:
         """Return a JSON-serialisable representation of this result."""
         return {
+            "schema_version": self.schema_version,
             "events_checked": self.events_checked,
             "valid": self.valid,
             "invalid": self.invalid,

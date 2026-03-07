@@ -21,6 +21,10 @@ from typing import Any
 import pytest
 
 from agentobs_validate.validator.input_parser import (
+    MAX_EVENT_BYTES,
+    MAX_JSONL_LINE_BYTES,
+    MAX_NESTING_DEPTH,
+    MAX_STDIN_BYTES,
     ParseError,
     detect_format,
     iter_events,
@@ -211,6 +215,23 @@ class TestIterEventsJsonl:
         results = list(iter_events_jsonl(io.StringIO(content)))
         assert results[0][0] == 2
 
+    def test_empty_object_accepted_and_depth_checked(self) -> None:
+        """Covers depth helper branch for empty dict values."""
+        results = list(iter_events_jsonl(io.StringIO("{}\n")))
+        assert results == [(1, {})]
+
+    def test_event_with_empty_list_depth_branch(self) -> None:
+        """Covers depth helper branch for empty list values."""
+        event = {"arr": []}
+        results = list(iter_events_jsonl(io.StringIO(json.dumps(event) + "\n")))
+        assert results == [(1, event)]
+
+    def test_event_with_non_empty_list_depth_branch(self) -> None:
+        """Covers depth helper branch for non-empty list values."""
+        event = {"arr": [1, {"k": "v"}]}
+        results = list(iter_events_jsonl(io.StringIO(json.dumps(event) + "\n")))
+        assert results == [(1, event)]
+
     def test_whitespace_only_lines_skipped(self) -> None:
         content = "   \n" + json.dumps(_EV1) + "\n\t\n"
         results = list(iter_events_jsonl(io.StringIO(content)))
@@ -269,6 +290,30 @@ class TestIterEventsJsonl:
         assert second == (2, _EV2)
         with pytest.raises(StopIteration):
             next(gen)
+
+    def test_line_exceeding_max_size_raises_parse_error(self) -> None:
+        huge_value = "x" * (MAX_JSONL_LINE_BYTES + 10)
+        stream = io.StringIO(json.dumps({"payload": huge_value}) + "\n")
+        with pytest.raises(ParseError, match="maximum size") as exc_info:
+            list(iter_events_jsonl(stream))
+        assert exc_info.value.line_number == 1
+
+    def test_event_exceeding_max_size_raises_parse_error(self) -> None:
+        big = dict(_EV1)
+        big["blob"] = "x" * (MAX_EVENT_BYTES + 200)
+        stream = io.StringIO(json.dumps(big) + "\n")
+        with pytest.raises(ParseError, match="Line 1 exceeds maximum size"):
+            list(iter_events_jsonl(stream))
+
+    def test_event_exceeding_max_depth_raises_parse_error(self) -> None:
+        nested: dict[str, Any] = {"v": 1}
+        for _ in range(MAX_NESTING_DEPTH + 1):
+            nested = {"x": nested}
+        deep = dict(_EV1)
+        deep["payload"] = nested
+        stream = io.StringIO(json.dumps(deep) + "\n")
+        with pytest.raises(ParseError, match="maximum nesting depth"):
+            list(iter_events_jsonl(stream))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -336,6 +381,21 @@ class TestIterEventsJson:
         stream = io.StringIO(_json_array(_EV1))
         _, event = next(iter(iter_events_json(stream)))
         assert event == _EV1
+
+    def test_array_event_exceeding_max_depth_raises_parse_error(self) -> None:
+        nested: dict[str, Any] = {"v": 1}
+        for _ in range(MAX_NESTING_DEPTH + 1):
+            nested = {"x": nested}
+        deep = dict(_EV1)
+        deep["payload"] = nested
+        with pytest.raises(ParseError, match="maximum nesting depth"):
+            list(iter_events_json(io.StringIO(json.dumps([deep]))))
+
+    def test_array_event_exceeding_max_size_raises_parse_error(self) -> None:
+        big = dict(_EV1)
+        big["blob"] = "x" * (MAX_EVENT_BYTES + 200)
+        with pytest.raises(ParseError, match="Event on line 1 exceeds maximum size"):
+            list(iter_events_json(io.StringIO(json.dumps([big]))))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -511,4 +571,12 @@ class TestIterEventsStdin:
     ) -> None:
         monkeypatch.setattr(sys, "stdin", io.StringIO("# comment\n{}"))
         with pytest.raises(ParseError, match="unexpected leading character"):
+            list(iter_events(None))
+
+    def test_stdin_exceeding_max_size_raises_parse_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        huge = "{" + ("x" * (MAX_STDIN_BYTES + 10))
+        monkeypatch.setattr(sys, "stdin", io.StringIO(huge))
+        with pytest.raises(ParseError, match="STDIN exceeds maximum size"):
             list(iter_events(None))

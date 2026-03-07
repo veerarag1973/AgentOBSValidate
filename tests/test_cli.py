@@ -28,7 +28,7 @@ _VALID_EVENT: dict[str, str] = {
     "timestamp": "2024-01-01T00:00:00Z",
     "event_type": "agent.task.start",
     "source": "my-agent@1.0.0",
-    "trace_id": "0123456789abcdef",
+    "trace_id": "0123456789abcdef0123456789abcdef",
     "span_id": "0123456789abcdef",
 }
 
@@ -284,3 +284,168 @@ class TestStdinInput:
     def test_dash_arg_reads_stdin_invalid(self, runner: CliRunner) -> None:
         result = runner.invoke(main, ["-"], input=INVALID_JSONL)
         assert result.exit_code == EXIT_INVALID
+
+
+# ── Roadmap features (now fully implemented) ─────────────────────────────────
+
+_OTEL_VALID_EVENT = {
+    "eventId": "01HZQSN7PQVR2K4M0BXJD3GSTW",
+    "timestamp": "2024-01-01T00:00:00Z",
+    "eventType": "agent.task.start",
+    "source": "my-agent@1.0.0",
+    "traceId": "0123456789abcdef0123456789abcdef",
+    "spanId": "0123456789abcdef",
+}
+
+
+class TestExportSchema:
+    """--export-schema prints a JSON Schema document and exits 0."""
+
+    def test_export_schema_exits_zero(self, runner: CliRunner) -> None:
+        result = runner.invoke(main, ["--export-schema"])
+        assert result.exit_code == EXIT_VALID
+
+    def test_export_schema_output_is_valid_json(self, runner: CliRunner) -> None:
+        result = runner.invoke(main, ["--export-schema"])
+        doc = json.loads(result.output)
+        assert isinstance(doc, dict)
+
+    def test_export_schema_has_dollar_schema(self, runner: CliRunner) -> None:
+        result = runner.invoke(main, ["--export-schema"])
+        doc = json.loads(result.output)
+        assert "$schema" in doc
+
+    def test_export_schema_has_required_fields(self, runner: CliRunner) -> None:
+        result = runner.invoke(main, ["--export-schema"])
+        doc = json.loads(result.output)
+        assert "event_id" in doc["required"]
+        assert "trace_id" in doc["required"]
+
+    def test_export_schema_with_version(self, runner: CliRunner) -> None:
+        result = runner.invoke(main, ["--export-schema", "--schema-version", "0.1"])
+        assert result.exit_code == EXIT_VALID
+
+    def test_export_schema_unsupported_version(self, runner: CliRunner) -> None:
+        result = runner.invoke(main, ["--export-schema", "--schema-version", "9.9"])
+        assert result.exit_code == EXIT_PARSE_FAILURE
+
+
+class TestOtelMode:
+    """--otel accepts camelCase field-name aliases from OTel/W3C Trace Context."""
+
+    def test_otel_camelcase_event_passes(self, runner: CliRunner) -> None:
+        result = runner.invoke(main, ["--otel"], input=json.dumps(_OTEL_VALID_EVENT) + "\n")
+        assert result.exit_code == EXIT_VALID
+
+    def test_otel_mode_exit_zero_on_valid(self, runner: CliRunner, tmp_path: Path) -> None:
+        path = _write(tmp_path, "events.jsonl", VALID_JSONL)
+        result = runner.invoke(main, [path, "--otel"])
+        assert result.exit_code == EXIT_VALID
+
+    def test_otel_mode_exit_one_on_invalid(self, runner: CliRunner, tmp_path: Path) -> None:
+        path = _write(tmp_path, "events.jsonl", INVALID_JSONL)
+        result = runner.invoke(main, [path, "--otel"])
+        assert result.exit_code == EXIT_INVALID
+
+    def test_otel_mode_json_output(self, runner: CliRunner) -> None:
+        result = runner.invoke(main, ["--otel", "--json"], input=json.dumps(_OTEL_VALID_EVENT) + "\n")
+        assert result.exit_code == EXIT_VALID
+        doc = json.loads(result.output)
+        assert doc["summary"]["valid"] == 1
+
+
+class TestSchemaVersion:
+    """--schema-version validates against a specific schema version."""
+
+    def test_supported_version_exits_zero(self, runner: CliRunner, tmp_path: Path) -> None:
+        path = _write(tmp_path, "events.jsonl", VALID_JSONL)
+        result = runner.invoke(main, [path, "--schema-version", "0.1"])
+        assert result.exit_code == EXIT_VALID
+
+    def test_unsupported_version_exits_parse_failure(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        path = _write(tmp_path, "events.jsonl", VALID_JSONL)
+        result = runner.invoke(main, [path, "--schema-version", "0.2"])
+        assert result.exit_code == EXIT_PARSE_FAILURE
+
+    def test_unsupported_version_message(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        path = _write(tmp_path, "events.jsonl", VALID_JSONL)
+        result = runner.invoke(main, [path, "--schema-version", "0.2"])
+        assert "not supported" in result.output
+
+    def test_schema_version_in_json_summary(self, runner: CliRunner, tmp_path: Path) -> None:
+        path = _write(tmp_path, "events.jsonl", VALID_JSONL)
+        result = runner.invoke(main, [path, "--json", "--schema-version", "0.1"])
+        doc = json.loads(result.output)
+        assert doc["summary"]["schema_version"] == "0.1"
+
+    def test_schema_version_in_human_summary(self, runner: CliRunner, tmp_path: Path) -> None:
+        path = _write(tmp_path, "events.jsonl", VALID_JSONL)
+        result = runner.invoke(main, [path, "--schema-version", "0.1"])
+        assert "schema_version: 0.1" in result.output
+
+
+class TestKeyFile:
+    """--key-file enables HMAC-SHA256 cryptographic signature verification."""
+
+    @staticmethod
+    def _make_signed_event(key_bytes: bytes) -> str:
+        import base64
+        import hashlib
+        import hmac
+        import json
+        event = {
+            "event_id": "01HZQSN7PQVR2K4M0BXJD3GSTW",
+            "timestamp": "2024-01-01T00:00:00Z",
+            "event_type": "agent.task.start",
+            "source": "my-agent@1.0.0",
+            "trace_id": "0123456789abcdef0123456789abcdef",
+            "span_id": "0123456789abcdef",
+        }
+        canonical = json.dumps(event, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        digest = hmac.digest(key_bytes, canonical, hashlib.sha256)
+        sig_value = base64.b64encode(digest).decode()
+        event["signature"] = {"algorithm": "HMAC-SHA256", "value": sig_value}
+        return json.dumps(event) + "\n"
+
+    def test_missing_key_file_exits_parse_failure(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        path = _write(tmp_path, "events.jsonl", VALID_JSONL)
+        result = runner.invoke(main, [path, "--key-file", "/no/such/key.bin"])
+        assert result.exit_code == EXIT_PARSE_FAILURE
+
+    def test_missing_key_file_message(self, runner: CliRunner, tmp_path: Path) -> None:
+        path = _write(tmp_path, "events.jsonl", VALID_JSONL)
+        result = runner.invoke(main, [path, "--key-file", "/no/such/key.bin"])
+        assert "Cannot read key file" in result.output
+
+    def test_valid_signature_passes(self, runner: CliRunner, tmp_path: Path) -> None:
+        key = b"my-secret-key"
+        key_path = _write(tmp_path, "signing.key", key.decode())
+        event_line = self._make_signed_event(key)
+        events_path = _write(tmp_path, "events.jsonl", event_line)
+        result = runner.invoke(main, [events_path, "--key-file", key_path])
+        assert result.exit_code == EXIT_VALID
+
+    def test_wrong_key_fails_signature(self, runner: CliRunner, tmp_path: Path) -> None:
+        key = b"my-secret-key"
+        wrong_key_path = _write(tmp_path, "wrong.key", "wrong-key")
+        event_line = self._make_signed_event(key)
+        events_path = _write(tmp_path, "events.jsonl", event_line)
+        result = runner.invoke(main, [events_path, "--key-file", wrong_key_path])
+        assert result.exit_code == EXIT_INVALID
+
+    def test_without_key_file_signature_not_verified(
+        self, runner: CliRunner, tmp_path: Path
+    ) -> None:
+        # Structural-only check: any valid base64 passes without a key file
+        key = b"my-secret-key"
+        event_line = self._make_signed_event(key)
+        events_path = _write(tmp_path, "events.jsonl", event_line)
+        result = runner.invoke(main, [events_path])
+        assert result.exit_code == EXIT_VALID
+

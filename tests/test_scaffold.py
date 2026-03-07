@@ -197,9 +197,9 @@ class TestVersionContract:
         for part in parts:
             assert part.isdigit(), f"Non-numeric version part: {part!r}"
 
-    def test_version_major_is_zero(self) -> None:
+    def test_version_major_is_one(self) -> None:
         major = int(__version__.split(".")[0])
-        assert major == 0, "Phase 0 — major version must be 0"
+        assert major == 1, "v1.0 — major version must be 1"
 
     def test_version_exported_from_package(self) -> None:
         import agentobs_validate

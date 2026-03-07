@@ -276,7 +276,10 @@ class TestFormatJson:
 
     def test_summary_empty_stream(self):
         data = json.loads(format_json(EMPTY_STREAM))
-        assert data["summary"] == {"events_checked": 0, "valid": 0, "invalid": 0}
+        assert data["summary"]["events_checked"] == 0
+        assert data["summary"]["valid"] == 0
+        assert data["summary"]["invalid"] == 0
+        assert data["summary"]["schema_version"] == "0.1"
 
     def test_summary_all_pass(self):
         data = json.loads(format_json(ALL_PASS))

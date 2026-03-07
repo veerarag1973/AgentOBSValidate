@@ -36,6 +36,7 @@ INVALID_SPAN_ID: Final[str] = "INVALID_SPAN_ID"
 # ── signature (spec §8.7) ────────────────────────────────────────────────────
 INVALID_SIGNATURE: Final[str] = "INVALID_SIGNATURE"
 UNSUPPORTED_ALGORITHM: Final[str] = "UNSUPPORTED_ALGORITHM"
+SIGNATURE_MISMATCH: Final[str] = "SIGNATURE_MISMATCH"
 
 # ── Complete catalog for programmatic use ─────────────────────────────────────
 ALL_ERROR_CODES: Final[frozenset[str]] = frozenset(
@@ -52,5 +53,6 @@ ALL_ERROR_CODES: Final[frozenset[str]] = frozenset(
         INVALID_SPAN_ID,
         INVALID_SIGNATURE,
         UNSUPPORTED_ALGORITHM,
+        SIGNATURE_MISMATCH,
     }
 )

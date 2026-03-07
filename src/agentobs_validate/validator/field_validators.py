@@ -12,6 +12,10 @@ Spec reference: §8 Field Specifications, §9 Validation Process.
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
+import json
 from typing import Any
 
 from agentobs_validate.errors.codes import (
@@ -26,6 +30,7 @@ from agentobs_validate.errors.codes import (
     MISSING_EVENT_ID,
     MISSING_SOURCE,
     MISSING_TIMESTAMP,
+    SIGNATURE_MISMATCH,
     UNSUPPORTED_ALGORITHM,
 )
 from agentobs_validate.errors.models import ValidationError
@@ -176,7 +181,7 @@ def validate_source(value: Any) -> list[ValidationError]:
 def validate_trace_id(value: Any) -> list[ValidationError]:
     """Validate the ``trace_id`` envelope field (spec §8.5).
 
-    Must be present and consist of 16 or 32 lowercase hexadecimal characters.
+    Must be present and consist of exactly 32 lowercase hexadecimal characters.
 
     Error codes emitted:
     - ``INVALID_TRACE_ID`` — field absent, not a string, or fails hex regex
@@ -186,7 +191,7 @@ def validate_trace_id(value: Any) -> list[ValidationError]:
             ValidationError(
                 code=INVALID_TRACE_ID,
                 field=FIELD_TRACE_ID,
-                message="trace_id must be 16 or 32 lowercase hexadecimal characters",
+                message="trace_id must be exactly 32 lowercase hexadecimal characters",
                 value=value,
             )
         ]
@@ -213,19 +218,29 @@ def validate_span_id(value: Any) -> list[ValidationError]:
     return []
 
 
-def validate_signature(value: Any) -> list[ValidationError]:
+def validate_signature(
+    value: Any,
+    *,
+    key_bytes: bytes | None = None,
+    event: dict | None = None,
+) -> list[ValidationError]:
     """Validate the optional ``signature`` envelope field (spec §8.7).
 
     If absent (``None``), the field is skipped and no errors are emitted.
     When present, the sub-fields ``algorithm`` and ``value`` are validated.
 
-    Note: This phase validates *structure only*. Cryptographic HMAC
-    verification against a key is a roadmap item (spec §18).
+    When *key_bytes* and *event* are supplied the HMAC-SHA256 digest is also
+    verified cryptographically.  The canonical message is the event dict
+    serialised without the ``signature`` key, with sorted keys and no
+    whitespace (``json.dumps(sorted_keys, separators=(',', ':'))``
+    encoded as UTF-8).
 
     Error codes emitted:
     - ``UNSUPPORTED_ALGORITHM`` — ``algorithm`` absent or not ``HMAC-SHA256``
     - ``INVALID_SIGNATURE``     — ``value`` absent, not a string, empty, or
                                   not valid standard base64
+    - ``SIGNATURE_MISMATCH``    — structural signature is valid but the HMAC
+                                  digest does not match the computed value
     """
     if value is None:
         return []
@@ -263,11 +278,12 @@ def validate_signature(value: Any) -> list[ValidationError]:
 
     # Validate value sub-field (must be non-empty standard base64)
     sig_value = value.get(FIELD_SIG_VALUE)
-    if (
+    sig_value_invalid = (
         not isinstance(sig_value, str)
         or not sig_value
         or not BASE64_RE.match(sig_value)
-    ):
+    )
+    if sig_value_invalid:
         errors.append(
             ValidationError(
                 code=INVALID_SIGNATURE,
@@ -276,5 +292,28 @@ def validate_signature(value: Any) -> list[ValidationError]:
                 value=sig_value,
             )
         )
+
+    # Cryptographic HMAC verification — only when key is provided and
+    # structural validation passed (algorithm correct, value is valid base64).
+    if (
+        not errors
+        and key_bytes is not None
+        and event is not None
+    ):
+        canonical_event = {k: v for k, v in event.items() if k != FIELD_SIGNATURE}
+        message = json.dumps(
+            canonical_event, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+        expected_digest = base64.b64decode(sig_value)  # type: ignore[arg-type]
+        computed = hmac.digest(key_bytes, message, hashlib.sha256)
+        if not hmac.compare_digest(computed, expected_digest):
+            errors.append(
+                ValidationError(
+                    code=SIGNATURE_MISMATCH,
+                    field=FIELD_SIG_VALUE,
+                    message="HMAC-SHA256 signature does not match the computed digest",
+                    value=sig_value,
+                )
+            )
 
     return errors

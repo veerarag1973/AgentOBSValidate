@@ -26,6 +26,13 @@ import sys
 from typing import IO, Any, Iterator, Literal
 
 
+# Input hardening limits for untrusted streams.
+MAX_EVENT_BYTES = 1_000_000
+MAX_JSONL_LINE_BYTES = 1_000_000
+MAX_STDIN_BYTES = 10_000_000
+MAX_NESTING_DEPTH = 10
+
+
 class ParseError(Exception):
     """Raised when input cannot be parsed into event dicts.
 
@@ -41,6 +48,41 @@ class ParseError(Exception):
     def __init__(self, message: str, line_number: int | None = None) -> None:
         self.line_number = line_number
         super().__init__(message)
+
+
+def _max_nesting_depth(value: Any) -> int:
+    """Return maximum nesting depth for JSON-compatible containers.
+
+    Scalars have depth 0. Dict/list add one level plus their deepest child.
+    """
+    if isinstance(value, dict):
+        if not value:
+            return 1
+        return 1 + max(_max_nesting_depth(v) for v in value.values())
+    if isinstance(value, list):
+        if not value:
+            return 1
+        return 1 + max(_max_nesting_depth(v) for v in value)
+    return 0
+
+
+def _validate_event_limits(event: dict[str, Any], *, line_number: int | None = None) -> None:
+    """Enforce event-level safety limits on size and nesting depth."""
+    size_bytes = len(json.dumps(event, separators=(",", ":")).encode("utf-8"))
+    if size_bytes > MAX_EVENT_BYTES:
+        where = f" on line {line_number}" if line_number is not None else ""
+        raise ParseError(
+            f"Event{where} exceeds maximum size of {MAX_EVENT_BYTES} bytes",
+            line_number=line_number,
+        )
+
+    depth = _max_nesting_depth(event)
+    if depth > MAX_NESTING_DEPTH:
+        where = f" on line {line_number}" if line_number is not None else ""
+        raise ParseError(
+            f"Event{where} exceeds maximum nesting depth of {MAX_NESTING_DEPTH}",
+            line_number=line_number,
+        )
 
 
 # ── Format detection ──────────────────────────────────────────────────────────
@@ -108,6 +150,11 @@ def iter_events_jsonl(stream: IO[str]) -> Iterator[tuple[int, dict[str, Any]]]:
     - A line whose decoded value is not a JSON object (``dict``).
     """
     for line_number, raw_line in enumerate(stream, start=1):
+        if len(raw_line.encode("utf-8")) > MAX_JSONL_LINE_BYTES:
+            raise ParseError(
+                f"Line {line_number} exceeds maximum size of {MAX_JSONL_LINE_BYTES} bytes",
+                line_number=line_number,
+            )
         line = raw_line.strip()
         if not line:
             continue
@@ -124,6 +171,7 @@ def iter_events_jsonl(stream: IO[str]) -> Iterator[tuple[int, dict[str, Any]]]:
                 f"got {type(event).__name__}",
                 line_number=line_number,
             )
+        _validate_event_limits(event, line_number=line_number)
         yield line_number, event
 
 
@@ -153,6 +201,7 @@ def iter_events_json(stream: IO[str]) -> Iterator[tuple[int, dict[str, Any]]]:
                 f"got {type(event).__name__}",
                 line_number=index,
             )
+        _validate_event_limits(event, line_number=index)
         yield index, event
 
 
@@ -182,6 +231,10 @@ def iter_events(source: str | None) -> Iterator[tuple[int, dict[str, Any]]]:
         # stdin is not seekable — buffer in full, then wrap in StringIO so
         # format detection and iteration both start from position 0.
         content = sys.stdin.read()
+        if len(content.encode("utf-8")) > MAX_STDIN_BYTES:
+            raise ParseError(
+                f"STDIN exceeds maximum size of {MAX_STDIN_BYTES} bytes"
+            )
         buf = io.StringIO(content)
         fmt = _sniff_stream(buf)
         buf.seek(0)

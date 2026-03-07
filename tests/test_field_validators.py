@@ -403,14 +403,14 @@ class TestValidateTraceId:
     def test_valid_spec_example_32_chars(self) -> None:
         assert validate_trace_id(VALID_TRACE_ID) == []
 
-    def test_valid_16_chars(self) -> None:
-        assert validate_trace_id("4bf92f3577b34da6") == []
+    def test_16_chars_invalid(self) -> None:
+        _single_error(validate_trace_id("4bf92f3577b34da6"), INVALID_TRACE_ID, FIELD_TRACE_ID)
 
     def test_valid_32_chars_all_zeros(self) -> None:
         assert validate_trace_id("0" * 32) == []
 
-    def test_valid_16_chars_all_f(self) -> None:
-        assert validate_trace_id("f" * 16) == []
+    def test_16_chars_all_f_invalid(self) -> None:
+        _single_error(validate_trace_id("f" * 16), INVALID_TRACE_ID, FIELD_TRACE_ID)
 
     # ── Missing ───────────────────────────────────────────────────────────────
 
@@ -450,17 +450,17 @@ class TestValidateTraceId:
 
     # ── Boundary conditions ───────────────────────────────────────────────────
 
-    def test_boundary_exactly_16(self) -> None:
-        assert validate_trace_id("a" * 16) == []
+    def test_boundary_exactly_16_invalid(self) -> None:
+        _single_error(validate_trace_id("a" * 16), INVALID_TRACE_ID, FIELD_TRACE_ID)
 
     def test_boundary_exactly_32(self) -> None:
         assert validate_trace_id("a" * 32) == []
 
-    def test_boundary_17_chars_valid(self) -> None:
-        assert validate_trace_id("a" * 17) == []
+    def test_boundary_17_chars_invalid(self) -> None:
+        _single_error(validate_trace_id("a" * 17), INVALID_TRACE_ID, FIELD_TRACE_ID)
 
-    def test_boundary_31_chars_valid(self) -> None:
-        assert validate_trace_id("a" * 31) == []
+    def test_boundary_31_chars_invalid(self) -> None:
+        _single_error(validate_trace_id("a" * 31), INVALID_TRACE_ID, FIELD_TRACE_ID)
 
     # ── Non-string types ──────────────────────────────────────────────────────
 

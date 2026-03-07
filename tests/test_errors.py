@@ -92,10 +92,11 @@ class TestAllErrorCodesCatalog:
         "INVALID_SPAN_ID",
         "INVALID_SIGNATURE",
         "UNSUPPORTED_ALGORITHM",
+        "SIGNATURE_MISMATCH",
     }
 
     def test_all_codes_count(self) -> None:
-        assert len(ALL_ERROR_CODES) == 12
+        assert len(ALL_ERROR_CODES) == 13
 
     def test_all_codes_is_frozenset(self) -> None:
         assert isinstance(ALL_ERROR_CODES, frozenset)
@@ -118,6 +119,7 @@ class TestAllErrorCodesCatalog:
             INVALID_TIMESTAMP, INVALID_EVENT_TYPE, INVALID_NAMESPACE,
             MISSING_SOURCE, INVALID_SOURCE_FORMAT, INVALID_TRACE_ID,
             INVALID_SPAN_ID, INVALID_SIGNATURE, UNSUPPORTED_ALGORITHM,
+            "SIGNATURE_MISMATCH",
         ]
         assert len(all_as_list) == len(set(all_as_list))
 

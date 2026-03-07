@@ -1,0 +1,35 @@
+name: AgentOBS Validate
+
+on:
+  push:
+    branches: ["main", "develop"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  validate:
+    name: Validate example events
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install agentobs-validate
+        run: pip install .
+
+      - name: Validate example JSONL (human output)
+        run: agentobs-validate examples/valid.jsonl
+
+      - name: Validate example JSONL (JSON output)
+        run: agentobs-validate examples/valid.jsonl --json
+
+      - name: Validate example JSON array
+        run: agentobs-validate examples/valid.json
+
+      - name: Confirm invalid.jsonl exits 1
+        run: |
+          agentobs-validate examples/invalid.jsonl && exit 1 || true

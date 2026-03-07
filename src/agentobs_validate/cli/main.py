@@ -10,6 +10,11 @@ import sys
 import click
 
 from agentobs_validate import __version__
+from agentobs_validate.schema.json_schema import (
+    SUPPORTED_VERSIONS as SUPPORTED_SCHEMA_VERSIONS,
+    export_schema as do_export_schema,
+)
+from agentobs_validate.validator.context import ValidationContext
 from agentobs_validate.validator.engine import validate_stream
 from agentobs_validate.validator.formatters import format_human, format_json
 from agentobs_validate.validator.input_parser import ParseError, iter_events
@@ -44,11 +49,52 @@ EXIT_INTERNAL_ERROR = 3
     default=False,
     help="Treat warnings as errors (fail on any non-compliant event).",
 )
+@click.option(
+    "--export-schema",
+    "export_schema",
+    is_flag=True,
+    default=False,
+    help="Export JSON Schema (Draft 2020-12) for the AgentOBS event envelope and exit.",
+)
+@click.option(
+    "--otel",
+    is_flag=True,
+    default=False,
+    help=(
+        "OpenTelemetry compatibility mode: accept camelCase field-name aliases "
+        "(traceId, spanId, eventId, eventType) in addition to AgentOBS snake_case names."
+    ),
+)
+@click.option(
+    "--schema-version",
+    "schema_version",
+    default=None,
+    metavar="VERSION",
+    help=f"Validate against a specific schema version (supported: {', '.join(sorted(SUPPORTED_SCHEMA_VERSIONS))}).",
+)
+@click.option(
+    "--key-file",
+    "key_file",
+    default=None,
+    metavar="FILE",
+    help=(
+        "Path to a file containing the HMAC-SHA256 signing key. "
+        "When provided, events with a signature block are cryptographically verified."
+    ),
+)
 @click.version_option(
     version=__version__,
     prog_name="agentobs-validate",
 )
-def main(file: str | None, output_json: bool, strict: bool) -> None:
+def main(
+    file: str | None,
+    output_json: bool,
+    strict: bool,
+    export_schema: bool,
+    otel: bool,
+    schema_version: str | None,
+    key_file: str | None,
+) -> None:
     """Validate AgentOBS event streams against the AgentOBS schema.
 
     FILE is the path to a .json or .jsonl event file.
@@ -61,9 +107,36 @@ def main(file: str | None, output_json: bool, strict: bool) -> None:
       2 — input parse failure
       3 — internal validator error
     """
+    # ── Schema version validation ────────────────────────────────────────────
+    ver = schema_version or "0.1"
+    if ver not in SUPPORTED_SCHEMA_VERSIONS:
+        supported = ", ".join(sorted(SUPPORTED_SCHEMA_VERSIONS))
+        click.echo(
+            f"Schema version {ver!r} is not supported. Supported versions: {supported}",
+            err=True,
+        )
+        sys.exit(EXIT_PARSE_FAILURE)
+
+    # ── --export-schema: print JSON Schema and exit ──────────────────────────
+    if export_schema:
+        click.echo(do_export_schema(ver))
+        sys.exit(EXIT_VALID)
+
+    # ── --key-file: load HMAC key bytes ──────────────────────────────────────
+    key_bytes: bytes | None = None
+    if key_file is not None:
+        try:
+            with open(key_file, "rb") as fh:
+                key_bytes = fh.read().rstrip(b"\r\n ")
+        except OSError as exc:
+            click.echo(f"Cannot read key file: {exc}", err=True)
+            sys.exit(EXIT_PARSE_FAILURE)
+
+    ctx = ValidationContext(otel_mode=otel, schema_version=ver, key_bytes=key_bytes)
+
     source = None if (file is None or file == "-") else file
     try:
-        result = validate_stream(iter_events(source))
+        result = validate_stream(iter_events(source), ctx)
     except ParseError as exc:
         click.echo(f"Parse error: {exc}", err=True)
         sys.exit(EXIT_PARSE_FAILURE)

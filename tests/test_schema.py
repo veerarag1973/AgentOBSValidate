@@ -1,4 +1,4 @@
-"""Tests for schema.fields and schema.patterns.
+"""Tests for schema.fields, schema.patterns, and schema.json_schema.
 
 Coverage targets:
 - Every field constant has the correct string value
@@ -8,10 +8,12 @@ Coverage targets:
 - Every regex rejects known bad inputs
 - Boundary conditions for trace_id (16 vs 32 chars)
 - BASE64_RE handles padding variants and empty string
+- build_json_schema / export_schema happy path and error path
 """
 
 from __future__ import annotations
 
+import json
 import re
 
 import pytest
@@ -290,16 +292,14 @@ class TestSourceRe:
 
 
 class TestTraceIdRe:
-    """trace_id must be 16 or 32 lowercase hex characters."""
+    """trace_id must be exactly 32 lowercase hex characters."""
 
     @pytest.mark.parametrize(
         "valid",
         [
             "4bf92f3577b34da6a3ce929d0e0e4736",  # 32 chars — spec §17 example
-            "0000000000000000",                   # 16 chars minimum
-            "ffffffffffffffff",                   # 16 chars all-f
             "0000000000000000ffffffffffffffff",   # 32 chars
-            "4bf92f3577b34da6",                   # 16 chars
+            "ffffffffffffffffffffffffffffffff",   # 32 chars all-f
         ],
     )
     def test_valid_trace_id(self, valid: str) -> None:
@@ -320,15 +320,13 @@ class TestTraceIdRe:
         assert not TRACE_ID_RE.match(invalid), f"Expected no match: {invalid!r}"
 
     def test_boundary_16_chars(self) -> None:
-        assert TRACE_ID_RE.match("a" * 16)
+        assert not TRACE_ID_RE.match("a" * 16)
 
     def test_boundary_32_chars(self) -> None:
         assert TRACE_ID_RE.match("a" * 32)
 
     def test_boundary_17_chars(self) -> None:
-        """17 chars is between 16 and 32 — must match (spec says 16 OR 32 bytes
-        but the hex representation regex allows any length in [16,32])."""
-        assert TRACE_ID_RE.match("a" * 17)
+        assert not TRACE_ID_RE.match("a" * 17)
 
     def test_boundary_15_chars_fails(self) -> None:
         assert not TRACE_ID_RE.match("a" * 15)
@@ -424,3 +422,50 @@ class TestBase64Re:
                      "SOURCE_RE", "TRACE_ID_RE", "SPAN_ID_RE", "BASE64_RE"):
             obj = getattr(p, name)
             assert isinstance(obj, re.Pattern), f"{name} is not a compiled Pattern"
+
+
+# ── JSON Schema export (json_schema.py) ──────────────────────────────────────
+
+
+class TestJsonSchemaModule:
+    """Tests for build_json_schema() and export_schema()."""
+
+    def test_build_json_schema_returns_dict(self) -> None:
+        from agentobs_validate.schema.json_schema import build_json_schema
+        schema = build_json_schema("0.1")
+        assert isinstance(schema, dict)
+
+    def test_build_json_schema_has_dollar_schema(self) -> None:
+        from agentobs_validate.schema.json_schema import build_json_schema
+        schema = build_json_schema("0.1")
+        assert "$schema" in schema
+        assert "2020-12" in schema["$schema"]
+
+    def test_build_json_schema_required_fields(self) -> None:
+        from agentobs_validate.schema.json_schema import build_json_schema
+        schema = build_json_schema("0.1")
+        required = schema["required"]
+        for field in ("event_id", "timestamp", "event_type", "source", "trace_id", "span_id"):
+            assert field in required
+
+    def test_build_json_schema_unsupported_version_raises(self) -> None:
+        from agentobs_validate.schema.json_schema import build_json_schema
+        with pytest.raises(ValueError, match="not supported"):
+            build_json_schema("9.9")
+
+    def test_export_schema_returns_valid_json(self) -> None:
+        from agentobs_validate.schema.json_schema import export_schema
+        output = export_schema("0.1")
+        doc = json.loads(output)
+        assert isinstance(doc, dict)
+
+    def test_export_schema_is_formatted(self) -> None:
+        from agentobs_validate.schema.json_schema import export_schema
+        output = export_schema("0.1")
+        # indent=2 means there will be leading spaces on nested lines
+        assert "\n  " in output
+
+    def test_supported_versions_frozenset(self) -> None:
+        from agentobs_validate.schema.json_schema import SUPPORTED_VERSIONS
+        assert isinstance(SUPPORTED_VERSIONS, frozenset)
+        assert "0.1" in SUPPORTED_VERSIONS

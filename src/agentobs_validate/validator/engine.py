@@ -11,6 +11,7 @@ from agentobs_validate.schema.fields import (
     FIELD_SIGNATURE,
     REQUIRED_FIELDS_ORDERED,
 )
+from agentobs_validate.validator.context import ValidationContext
 from agentobs_validate.validator.field_validators import (
     validate_event_id,
     validate_event_type,
@@ -32,8 +33,30 @@ _FIELD_VALIDATORS = {
     REQUIRED_FIELDS_ORDERED[5]: validate_span_id,
 }
 
+# OTel camelCase field-name aliases → AgentOBS snake_case (spec §18 / --otel flag)
+_OTEL_ALIASES: dict[str, str] = {
+    "traceId": "trace_id",
+    "spanId": "span_id",
+    "eventId": "event_id",
+    "eventType": "event_type",
+}
 
-def validate_event(index: int, event: dict) -> EventResult:
+
+def _normalize_otel(event: dict) -> dict:
+    """Return a copy of *event* with OTel camelCase aliases mapped to snake_case.
+
+    Only renames a key when the camelCase alias is present **and** the canonical
+    snake_case name is **absent** — so events that already use snake_case are
+    unaffected.
+    """
+    result = dict(event)
+    for alias, canonical in _OTEL_ALIASES.items():
+        if alias in result and canonical not in result:
+            result[canonical] = result.pop(alias)
+    return result
+
+
+def validate_event(index: int, event: dict, ctx: ValidationContext | None = None) -> EventResult:
     """Validate a single event dict and return an :class:`~agentobs_validate.validator.results.EventResult`.
 
     All field validators run regardless of prior errors (non-short-circuit).
@@ -46,12 +69,23 @@ def validate_event(index: int, event: dict) -> EventResult:
         1-based position of *event* in the input stream.
     event:
         Raw event dict decoded from JSON.
+    ctx:
+        Optional :class:`~agentobs_validate.validator.context.ValidationContext`
+        controlling OTel mode and HMAC key material.  Defaults to a plain
+        context with no special options when ``None``.
 
     Returns
     -------
     EventResult
         ``status="pass"`` when no errors were found; ``"fail"`` otherwise.
     """
+    if ctx is None:
+        ctx = ValidationContext()
+
+    # OTel field-name normalisation (spec §18, --otel flag)
+    if ctx.otel_mode:
+        event = _normalize_otel(event)
+
     errors = []
 
     # Run all required-field validators in pipeline order (spec §9)
@@ -61,13 +95,22 @@ def validate_event(index: int, event: dict) -> EventResult:
 
     # Validate optional signature field only when present (spec §8.7)
     if FIELD_SIGNATURE in event:
-        errors.extend(validate_signature(event[FIELD_SIGNATURE]))
+        errors.extend(
+            validate_signature(
+                event[FIELD_SIGNATURE],
+                key_bytes=ctx.key_bytes,
+                event=event,
+            )
+        )
 
     status = "fail" if errors else "pass"
     return EventResult(index=index, status=status, errors=errors)
 
 
-def validate_stream(events: Iterator[tuple[int, dict]]) -> StreamResult:
+def validate_stream(
+    events: Iterator[tuple[int, dict]],
+    ctx: ValidationContext | None = None,
+) -> StreamResult:
     """Validate every event in *events* and return a :class:`~agentobs_validate.validator.results.StreamResult`.
 
     Parameters
@@ -75,18 +118,23 @@ def validate_stream(events: Iterator[tuple[int, dict]]) -> StreamResult:
     events:
         An iterator that yields ``(position, event_dict)`` pairs, as
         produced by :func:`~agentobs_validate.validator.input_parser.iter_events`.
+    ctx:
+        Optional :class:`~agentobs_validate.validator.context.ValidationContext`.
 
     Returns
     -------
     StreamResult
         Aggregated counts and per-event results.
     """
+    if ctx is None:
+        ctx = ValidationContext()
+
     event_results: list[EventResult] = []
     valid = 0
     invalid = 0
 
     for index, event in events:
-        result = validate_event(index, event)
+        result = validate_event(index, event, ctx)
         event_results.append(result)
         if result.status == "pass":
             valid += 1
@@ -98,4 +146,6 @@ def validate_stream(events: Iterator[tuple[int, dict]]) -> StreamResult:
         valid=valid,
         invalid=invalid,
         events=event_results,
+        schema_version=ctx.schema_version,
     )
+

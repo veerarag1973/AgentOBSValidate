@@ -36,8 +36,8 @@ SOURCE_RE: Final[re.Pattern[str]] = re.compile(
     r"^[a-zA-Z0-9\-_]+@[0-9]+\.[0-9]+\.[0-9]+$"
 )
 
-# ── trace_id: 16 or 32 lowercase hex chars (spec §8.5) ───────────────────────
-TRACE_ID_RE: Final[re.Pattern[str]] = re.compile(r"^[0-9a-f]{16,32}$")
+# ── trace_id: exactly 32 lowercase hex chars (spec §8.5) ─────────────────────
+TRACE_ID_RE: Final[re.Pattern[str]] = re.compile(r"^[0-9a-f]{32}$")
 
 # ── span_id: exactly 16 lowercase hex chars (spec §8.6) ──────────────────────
 SPAN_ID_RE: Final[re.Pattern[str]] = re.compile(r"^[0-9a-f]{16}$")

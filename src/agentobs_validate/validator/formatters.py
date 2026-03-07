@@ -56,6 +56,7 @@ def format_human(result: StreamResult) -> str:
     lines.append("")
     lines.append("Summary")
     lines.append(_SUMMARY_SEPARATOR)
+    lines.append(f"schema_version: {result.schema_version}")
     lines.append(f"events_checked: {result.events_checked}")
     lines.append(f"valid: {result.valid}")
     lines.append(f"invalid: {result.invalid}")
@@ -70,6 +71,7 @@ def format_json(result: StreamResult) -> str:
 
         {
           "summary": {
+            "schema_version": "0.1",
             "events_checked": 4,
             "valid": 2,
             "invalid": 2
@@ -97,6 +99,7 @@ def format_json(result: StreamResult) -> str:
         A ``json.dumps``-formatted string.
     """
     summary = {
+        "schema_version": result.schema_version,
         "events_checked": result.events_checked,
         "valid": result.valid,
         "invalid": result.invalid,
